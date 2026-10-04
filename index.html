@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Net Maze</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#1c1b19">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Net Maze">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" href="icon-192.png">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#f6f4ef;--fg:#222;--face:#fffdf8;--wall:#2b2118;--thin:#a9a393;--path:#8ec5ff;--start:#9be3a6;--end:#ffc27a;--sol:#fff0a0;--bad:#ff8a8a}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1c1b19;--fg:#eee;--face:#2a2926;--wall:#f0e6d2;--thin:#6b685e;--path:#2f6fb0;--start:#2d6b3a;--end:#9a5f1c;--sol:#6b5f1a;--bad:#9a3a3a}}
+:root[data-theme="dark"]{--bg:#1c1b19;--fg:#eee;--face:#2a2926;--wall:#f0e6d2;--thin:#6b685e;--path:#2f6fb0;--start:#2d6b3a;--end:#9a5f1c;--sol:#6b5f1a;--bad:#9a3a3a}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif;display:flex;flex-direction:column}
+#bar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px}
+select,button{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid var(--thin);background:var(--face);color:var(--fg);cursor:pointer}
+#msg{padding:0 12px 4px;min-height:1.4em;font-weight:600}
+#wrap{position:relative;flex:1;min-height:0}
+canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:manipulation}
+#leg{padding:6px 12px 10px;font-size:13px;opacity:.85}
+</style></head><body>
+<div id="bar"><select id="md"><option value="path">Mode: Find the path</option><option value="mem">Mode: Replicate</option></select><select id="sh"></select><button id="nw">New maze</button><button id="ck">Check</button><button id="rs">Clear</button><button id="so">Show solution</button><button id="tw">Walls</button><button id="ts">Start face</button><button id="te">End face</button><button id="sb">Submit</button><button id="tg">Show 3D</button></div>
+<div id="msg"></div>
+<div id="wrap"><canvas id="cv"></canvas></div>
+<div id="leg"><b>Goal:</b> select every face on a route from green <b>S</b> to orange <b>E</b>, then press Check. Thick dark lines are walls; thin lines are open. Each face is a face of a 3D solid, so you can only pass between faces that touch when the net is folded. Edges on the outside of the net are not hidden walls: they glue to other edges, and you must work out which.</div>
+<script>
+const $=id=>document.getElementById(id),cv=$('cv'),ctx=cv.getContext('2d');
+const sub=(a,b)=>a.map((x,i)=>x-b[i]),dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0),mul=(a,s)=>a.map(x=>x*s);
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const nrm=a=>{const l=Math.hypot(...a);return a.map(x=>x/l)};
+const mean=p=>p[0].map((_,d)=>p.reduce((s,q)=>s+q[d],0)/p.length);
+const shuf=a=>{for(let i=a.length-1;i>0;i--){const j=Math.random()*(i+1)|0;[a[i],a[j]]=[a[j],a[i]]}return a};
+const φ=(1+Math.sqrt(5))/2;
+function sym(b){const o=new Map(),P=(a,r=[])=>a.length?a.flatMap((x,i)=>P([...a.slice(0,i),...a.slice(i+1)],[...r,x])):[r];
+for(const p of P(b))for(let m=0;m<8;m++){const q=p.map((x,i)=>m>>i&1?-x:x);o.set(q.join(),q)}return[...o.values()]}
+const prism=n=>{const s=2*Math.sin(Math.PI/n),v=[];for(let i=0;i<n;i++)for(const z of[-1,1])v.push([Math.cos(2*Math.PI*i/n),Math.sin(2*Math.PI*i/n),z*s/2]);return v};
+const SH={
+'Cube':()=>sym([1,1,1]),
+'Tetrahedron':()=>[[1,1,1],[1,-1,-1],[-1,1,-1],[-1,-1,1]],
+'Octahedron':()=>sym([1,0,0]),
+'Triangular prism':()=>prism(3),
+'Pentagonal prism':()=>prism(5),
+'Hexagonal prism':()=>prism(6),
+'Cuboctahedron':()=>sym([1,1,0]),
+'Dodecahedron':()=>{const v=sym([1,1,1]);for(const a of[-1,1])for(const b of[-1,1])v.push([0,a/φ,b*φ],[a/φ,b*φ,0],[a*φ,0,b/φ]);return v},
+'Icosahedron':()=>{const v=[];for(const a of[-1,1])for(const b of[-1,1])v.push([0,a,b*φ],[a,b*φ,0],[b*φ,0,a]);return v},
+'Truncated octahedron':()=>sym([0,1,2])};
+function hull(V){const F=new Map(),n=V.length,e=1e-6;
+for(let i=0;i<n;i++)for(let j=i+1;j<n;j++)for(let k=j+1;k<n;k++){
+const nr=cross(sub(V[j],V[i]),sub(V[k],V[i])),l=Math.hypot(...nr);if(l<1e-9)continue;
+const N=nr.map(x=>x/l),d=dot(N,V[i]);let pos=0,neg=0;const on=[];
+for(let m=0;m<n;m++){const s=dot(N,V[m])-d;if(s>e)pos++;else if(s<-e)neg++;else on.push(m)}
+if(pos&&neg)continue;F.set(on.join(),{on,N:pos?N.map(x=>-x):N})}
+return[...F.values()].map(({on,N})=>{const c=mean(on.map(i=>V[i])),u=nrm(sub(V[on[0]],c)),w=cross(N,u);
+const ang=i=>{const d=sub(V[i],c);return Math.atan2(dot(d,w),dot(d,u))};
+on.sort((a,b)=>ang(a)-ang(b));return{v:on,N,c}})}
+function build(name){const V=SH[name](),F=hull(V),em=new Map();
+F.forEach((f,i)=>{f.e=f.v.map((a,k)=>{const b=f.v[(k+1)%f.v.length],key=a<b?a+'-'+b:b+'-'+a;
+if(!em.has(key))em.set(key,[]);em.get(key).push(i);return key})});
+return{V,F,em}}
+function shrink(P){const c=mean(P);return P.map(p=>[c[0]+(p[0]-c[0])*.97,c[1]+(p[1]-c[1])*.97])}
+function hit(A,B){for(const P of[A,B])for(let i=0;i<P.length;i++){const p=P[i],q=P[(i+1)%P.length],nx=p[1]-q[1],ny=q[0]-p[0];
+let a0=1e9,a1=-1e9,b0=1e9,b1=-1e9;
+A.forEach(r=>{const d=r[0]*nx+r[1]*ny;a0=Math.min(a0,d);a1=Math.max(a1,d)});
+B.forEach(r=>{const d=r[0]*nx+r[1]*ny;b0=Math.min(b0,d);b1=Math.max(b1,d)});
+if(a1<=b0||b1<=a0)return false}return true}
+function makeNet(){const{V,F,em}=G;
+for(let t=0;t<5000;t++){const root=Math.random()*F.length|0,pos=[],polys=[],tree=new Set(),f0=F[root];
+const u=nrm(sub(V[f0.v[0]],f0.c)),w=cross(f0.N,u),P0={};
+f0.v.forEach(i=>{const d=sub(V[i],f0.c);P0[i]=[dot(d,u),dot(d,w)]});
+pos[root]=P0;polys[root]=shrink(f0.v.map(i=>P0[i]));
+let cand=f0.e.map(k=>[root,k]),n=1;
+while(cand.length){const j=Math.random()*cand.length|0,[p,k]=cand[j];cand.splice(j,1);
+const[x,y]=em.get(k),c=x==p?y:x;if(pos[c])continue;
+const[a,b]=k.split('-').map(Number),P=pos[p],pa=V[a],u3=nrm(sub(V[b],pa)),fc=F[c];
+const w3=nrm(sub(sub(fc.c,pa),mul(u3,dot(sub(fc.c,pa),u3))));
+const A=P[a],B=P[b],L=Math.hypot(B[0]-A[0],B[1]-A[1]),ux=(B[0]-A[0])/L,uy=(B[1]-A[1])/L;
+let px=-uy,py=ux;const pc=mean(Object.values(P));
+if((pc[0]-A[0])*px+(pc[1]-A[1])*py>0){px=-px;py=-py}
+const Q={};fc.v.forEach(i=>{const d=sub(V[i],pa),xx=dot(d,u3),yy=dot(d,w3);Q[i]=[A[0]+ux*xx+px*yy,A[1]+uy*xx+py*yy]});
+const sp=shrink(fc.v.map(i=>Q[i]));
+if(polys.some(o=>o&&hit(o,sp)))continue;
+pos[c]=Q;polys[c]=sp;tree.add(k);n++;
+fc.e.forEach(e=>{if(e!==k)cand.push([c,e])})}
+if(n==F.length)return{pos,tree}}
+return null}
+function makeMaze(){const{F,em}=G,keys=[...em.keys()];let best=null;
+for(let t=0;t<40;t++){const ks=shuf([...keys]),par=F.map((_,i)=>i),fd=x=>par[x]==x?x:par[x]=fd(par[x]),open=new Set();
+ks.forEach(k=>{const[x,y]=em.get(k),rx=fd(x),ry=fd(y);if(rx!=ry){par[rx]=ry;open.add(k)}});
+ks.filter(k=>!open.has(k)).slice(0,Math.max(1,F.length/8|0)).forEach(k=>open.add(k));
+const adj=F.map(()=>[]);open.forEach(k=>{const[x,y]=em.get(k);adj[x].push([y,k]);adj[y].push([x,k])});
+for(let s=0;s<F.length;s++){const prev=F.map(()=>null),dist=F.map(()=>-1),q=[s];dist[s]=0;
+while(q.length){const a=q.shift();adj[a].forEach(([b,k])=>{if(dist[b]<0){dist[b]=dist[a]+1;prev[b]=[a,k];q.push(b)}})}
+for(let e=s+1;e<F.length;e++){let cuts=0,z=e;const sol=[e];
+while(z!=s){const[a,k]=prev[z];if(!net.tree.has(k))cuts++;z=a;sol.push(z)}
+const sc=dist[e]+2*cuts+Math.random();
+if(!best||sc>best.sc)best={sc,open,adj,s,t:e,sol:sol.reverse()}}}}
+return best}
+let G,net,maze,sel,tries,showSol,solved,flash,scr=[];
+let mode="path",phase="net",wallSel=new Set(),gs=null,ge=null,tool="w",v3=false,perfect=false,resMsg="",M=null,dn=null,s3=[],e3=[];
+const ry=a=>[[Math.cos(a),0,Math.sin(a)],[0,1,0],[-Math.sin(a),0,Math.cos(a)]],rx=a=>[[1,0,0],[0,Math.cos(a),-Math.sin(a)],[0,Math.sin(a),Math.cos(a)]];
+const mmul=(A,B)=>A.map(r=>[0,1,2].map(j=>r[0]*B[0][j]+r[1]*B[1][j]+r[2]*B[2][j]));
+M=mmul(rx(.5),ry(.6));
+function spin(dx,dy){M=mmul(rx(dy*.01),mmul(ry(dx*.01),M));const a=nrm(M[0]),b0=M[1],b=nrm(sub(b0,mul(a,dot(b0,a))));M=[a,b,cross(a,b)]}
+const in3d=()=>mode=="mem"&&v3;
+function newGame(){G=build($('sh').value);net=makeNet();maze=makeMaze();sel=new Set();tries=0;showSol=false;solved=false;flash=null;
+$('so').textContent='Show solution';mode=$('md').value;phase='build';perfect=false;wallSel=new Set();gs=ge=null;tool='w';v3=false;ui();draw()}
+function status(m){$('msg').textContent=m||(solved?`Solved with ${sel.size+2} faces after ${tries} check${tries>1?'s':''} (shortest route: ${maze.sol.length}).`:`Selected: ${sel.size} · checks: ${tries}`)}
+function draw(){if(!net)return;if(in3d())return draw3d();
+const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1,W=r.width,H=r.height;
+cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);
+const cs=getComputedStyle(document.documentElement),C=n=>cs.getPropertyValue(n).trim();
+let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
+net.pos.forEach(P=>Object.values(P).forEach(p=>{x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1])}));
+const m=26,s=Math.min((W-2*m)/(x1-x0),(H-2*m)/(y1-y0)),ox=(W-(x1-x0)*s)/2-x0*s,oy=(H-(y1-y0)*s)/2-y0*s;
+const F=G.F;scr=F.map((f,i)=>f.v.map(v=>{const p=net.pos[i][v];return[ox+p[0]*s,oy+p[1]*s]}));
+const items=[];
+F.forEach((f,i)=>{const P=scr[i],pi=sel.has(i);
+ctx.beginPath();P.forEach((p,j)=>j?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();
+ctx.fillStyle=flash===i?C('--bad'):i==maze.s?C('--start'):i==maze.t?C('--end'):pi?C('--path'):showSol&&maze.sol.includes(i)?C('--sol'):C('--face');ctx.fill();
+const c=mean(P);ctx.fillStyle=C('--fg');ctx.textAlign='center';ctx.textBaseline='middle';
+ctx.font='bold '+Math.max(14,s*.28)+'px system-ui';
+if(i==maze.s||i==maze.t)ctx.fillText(i==maze.s?'S':'E',c[0],c[1]);
+
+f.e.forEach((k,j)=>{const op=maze.open.has(k);items.push({p:P[j],q:P[(j+1)%P.length],c,k,st:op?0:2})})});
+items.sort((a,b)=>a.st-b.st);
+items.forEach(({p,q,c,k,st})=>{ctx.beginPath();ctx.moveTo(...p);ctx.lineTo(...q);ctx.lineCap='round';
+if(st==0){ctx.strokeStyle=C('--thin');ctx.lineWidth=2;ctx.stroke()}
+else{ctx.strokeStyle=C('--wall');ctx.lineWidth=6;ctx.stroke()}})}
+function inside(P,x,y){let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++)
+if((P[i][1]>y)!=(P[j][1]>y)&&x<(P[j][0]-P[i][0])*(y-P[i][1])/(P[j][1]-P[i][1])+P[i][0])c=!c;return c}
+cv.onclick=e=>{if(mode!='path'||solved)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+const f=scr.findIndex(P=>inside(P,x,y));if(f<0||f==maze.s||f==maze.t)return;
+sel.has(f)?sel.delete(f):sel.add(f);status();draw()};
+$('ck').onclick=()=>{if(solved)return;const S=new Set([...sel,maze.s,maze.t]),seen=new Set([maze.s]),q=[maze.s];let ok=true;
+while(q.length){const a=q.shift();maze.adj[a].forEach(([b])=>{if(S.has(b)&&!seen.has(b)){seen.add(b);q.push(b)}})}
+if(seen.size!=S.size)ok=false;
+S.forEach(f=>{const d=maze.adj[f].filter(([b])=>S.has(b)).length;if(d!=(f==maze.s||f==maze.t?1:2))ok=false});
+tries++;if(ok){solved=true;status()}else status('Not a valid route yet: it must be one unbroken chain of faces through open doors, with no extras. Checks: '+tries)};
+
+function ui(){const m=mode=="mem",b=phase=="build";
+['ck','rs','so'].forEach(i=>$(i).hidden=m);
+['tw','ts','te','sb'].forEach(i=>$(i).hidden=!(m&&b));$('tg').hidden=!m;
+$('tg').textContent=v3?'Show net':'Show 3D';
+[['tw','w'],['ts','s'],['te','e']].forEach(([i,t])=>$(i).style.background=v3&&tool==t?'var(--path)':'');
+cv.style.touchAction=in3d()?'none':'manipulation';
+$('leg').innerHTML=!m?'<b>Goal:</b> select every face on a route from green <b>S</b> to orange <b>E</b>, then press Check. Thick dark lines are walls; thin lines are open. Each face is a face of a 3D solid, so you can only pass between faces that touch when the net is folded. Edges on the outside of the net are not hidden walls: they glue to other edges, and you must work out which.':
+'<b>Replicate mode:</b> the net shows the walls (thick lines) and the S and E faces. Switch to the 3D solid at any time, drag to rotate it, and copy the maze onto it: mark the wall edges and the Start and End faces, then Submit. If you made mistakes, your solid and the correct one are shown side by side (red = wall that should not be there, amber = wall you missed).';
+if(!m)status();
+else if(!b)status(resMsg);
+else if(!v3)status("Study the net, then press Show 3D whenever you want to start marking the solid.");
+else status({w:`Walls tool: click the edges that are walls (${wallSel.size} marked). Drag to rotate.`,s:"Start tool: click the face that is the Start.",e:"End tool: click the face that is the End."}[tool])}
+function draw3d(){const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1,W=r.width,H=r.height;
+cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);s3=[];e3=[];
+if(phase=="build")panel("edit",0,W,H,"");
+else if(perfect)panel("truth",0,W,H,"Correct!");
+else{panel("you",0,W/2,H,"Your shape");panel("truth",W/2,W/2,H,"Correct shape");
+ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--thin');ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2,10);ctx.lineTo(W/2,H-10);ctx.stroke()}}
+function panel(kind,x0,W,H,title){
+const cs=getComputedStyle(document.documentElement),C=n=>cs.getPropertyValue(n).trim();
+const{V,F}=G,R=Math.max(...V.map(v=>Math.hypot(...v))),D=4*R,k=Math.min(W,H-30)*.34/R,cx=x0+W/2,cyy=H/2+12;
+const rot=p=>M.map(r=>dot(r,p));
+const PV=V.map(v=>{const q=rot(v),f=D/(D-q[2]);return[cx+q[0]*k*f,cyy-q[1]*k*f]});
+if(title){ctx.fillStyle=C('--fg');ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(title,cx,8)}
+const ek=new Set();
+F.forEach((f,i)=>{const n=rot(f.N),c=rot(f.c);if(dot(n,sub([0,0,D],c))<=0)return;
+const P=f.v.map(v=>PV[v]);s3.push({i,P});f.e.forEach(x=>ek.add(x));
+ctx.beginPath();P.forEach((p,j)=>j?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();
+let col=C('--face'),lab='';
+if(kind=="truth"){if(i==maze.s){col=C('--start');lab='S'}else if(i==maze.t){col=C('--end');lab='E'}}
+else{if(i==gs){col=kind=="you"&&gs!==maze.s?C('--bad'):C('--start');lab='S'}else if(i==ge){col=kind=="you"&&ge!==maze.t?C('--bad'):C('--end');lab='E'}}
+ctx.fillStyle=col;ctx.fill();
+const l=Math.max(0,dot(n,nrm([.3,.5,.8])));ctx.fillStyle='rgba(0,0,0,'+.28*(1-l)+')';ctx.fill();
+if(lab){const m=mean(P);ctx.fillStyle=C('--fg');ctx.font='bold 22px system-ui';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillText(lab,m[0],m[1])}});
+[...ek].forEach(key=>{const[a,b]=key.split('-').map(Number),p=PV[a],q=PV[b];e3.push({k:key,p,q});
+const T=!maze.open.has(key),g=wallSel.has(key);let st=0;
+if(kind=="edit")st=g?1:0;else if(kind=="you")st=g?(T?1:2):0;else st=T?(g?1:3):0;
+ctx.beginPath();ctx.moveTo(...p);ctx.lineTo(...q);ctx.lineCap='round';
+ctx.strokeStyle=st==0?C('--thin'):st==1?C('--wall'):st==2?'#e5484d':'#f5a524';ctx.lineWidth=st?6:1.5;ctx.stroke()})}
+function click3d(x,y){if(phase!="build")return;
+if(tool=="w"){let best=null,bd=14;e3.forEach(({k,p,q})=>{const dx=q[0]-p[0],dy=q[1]-p[1],t=Math.max(0,Math.min(1,((x-p[0])*dx+(y-p[1])*dy)/(dx*dx+dy*dy))),d=Math.hypot(x-p[0]-t*dx,y-p[1]-t*dy);if(d<bd){bd=d;best=k}});
+if(best)wallSel.has(best)?wallSel.delete(best):wallSel.add(best)}
+else{const h=s3.find(o=>inside(o.P,x,y));if(h){const f=h.i;
+if(tool=="s"){gs=gs===f?null:f;if(ge===f)ge=null}else{ge=ge===f?null:f;if(gs===f)gs=null}}}
+ui();draw()}
+cv.onpointerdown=e=>{dn={x:e.clientX,y:e.clientY,m:false};try{cv.setPointerCapture(e.pointerId)}catch(_){}};
+cv.onpointermove=e=>{if(!dn||!in3d())return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;
+if(Math.hypot(dx,dy)>4)dn.m=true;
+if(dn.m){spin(dx,dy);dn.x=e.clientX;dn.y=e.clientY;draw()}};
+cv.onpointerup=e=>{if(dn&&!dn.m&&in3d()){const r=cv.getBoundingClientRect();click3d(e.clientX-r.left,e.clientY-r.top)}dn=null};
+[['tw','w'],['ts','s'],['te','e']].forEach(([i,t])=>$(i).onclick=()=>{tool=t;v3=true;ui();draw()});
+$('sb').onclick=()=>{const T=[...G.em.keys()].filter(k=>!maze.open.has(k)),ok=T.filter(k=>wallSel.has(k)).length,wrong=wallSel.size-ok,miss=T.length-ok,sOK=gs===maze.s,eOK=ge===maze.t;
+perfect=sOK&&eOK&&!wrong&&!miss;
+resMsg=(perfect?"Perfect! You replicated the maze exactly. ":"")+`Start ${sOK?"✓":"✗"} · End ${eOK?"✓":"✗"} · Walls: ${ok}/${T.length} found, ${wrong} wrong, ${miss} missed.`;
+phase="done";v3=true;ui();draw()};
+$('tg').onclick=()=>{v3=!v3;ui();draw()};
+Object.keys(SH).forEach(n=>$('sh').add(new Option(n,n)));$('sh').value='Dodecahedron';
+$('sh').onchange=$('nw').onclick=$('md').onchange=newGame;
+$('rs').onclick=()=>{sel=new Set();solved=false;status();draw()};
+$('so').onclick=()=>{showSol=!showSol;$('so').textContent=showSol?'Hide solution':'Show solution';draw()};
+addEventListener('resize',draw);
+newGame();
+</script><script>if('serviceWorker' in navigator)addEventListener('load',()=>navigator.serviceWorker.register('sw.js').catch(()=>{}));</script>
+</body></html>
