@@ -32,7 +32,7 @@ body{height:100dvh}
 #zb button{width:44px;padding:0;font-size:24px;line-height:1;opacity:.92}
 </style></head><body>
 <div id="bar"><select id="md"><option value="path">Mode: Find the path</option><option value="mem">Mode: Replicate</option></select><select id="sh"></select><button id="nw">New maze</button></div>
-<div id="wrap"><canvas id="cv"></canvas><div id="zb"><button id="zi">+</button><button id="zo">−</button></div></div>
+<div id="wrap"><canvas id="cv"></canvas><div id="zb"><button id="zi">+</button><button id="zo">−</button><button id="rl">⟲</button><button id="rr">⟳</button></div></div>
 <div id="msg"></div>
 <div id="bar2"><button id="ck">Check</button><button id="rs">Clear</button><button id="so">Show solution</button><button id="tg">Show 3D</button><button id="sb">Submit</button><button id="lk">Rotation: locked</button><button id="mr">Correct shape: folded out</button></div>
 <script>
@@ -109,15 +109,16 @@ const sc=dist[e]+2*cuts+Math.random();
 if(!best||sc>best.sc)best={sc,open,adj,s,t:e,sol:sol.reverse()}}}}
 return best}
 let G,net,maze,sel,tries,showSol,solved,flash,scr=[];
-let mode="path",phase="net",wallSel=new Set(),gs=null,ge=null,tool="w",v3=false,perfect=false,resMsg="",M=null,M2=null,mir=false,zN=1,z3=1,panX=0,panY=0,lock=true,dn=null,s3=[],e3=[];
+let mode="path",phase="net",wallSel=new Set(),gs=null,ge=null,tool="w",v3=false,perfect=false,resMsg="",M=null,M2=null,mir=false,zN=1,z3=1,panX=0,panY=0,aN=0,p3x=0,p3y=0,lock=true,dn=null,s3=[],e3=[];
 const ry=a=>[[Math.cos(a),0,Math.sin(a)],[0,1,0],[-Math.sin(a),0,Math.cos(a)]],rx=a=>[[1,0,0],[0,Math.cos(a),-Math.sin(a)],[0,Math.sin(a),Math.cos(a)]];
 const mmul=(A,B)=>A.map(r=>[0,1,2].map(j=>r[0]*B[0][j]+r[1]*B[1][j]+r[2]*B[2][j]));
 M=mmul(rx(.5),ry(.6));M2=M.map(r=>r.slice());
-function rotM(A,dx,dy){A=mmul(rx(dy*.01),mmul(ry(dx*.01),A));const a=nrm(A[0]),b0=A[1],b=nrm(sub(b0,mul(a,dot(b0,a))));return[a,b,cross(a,b)]}
-function spin(dx,dy,t){if(t!="R")M=rotM(M,dx,dy);if(t!="L")M2=rotM(M2,dx,dy)}
+const rz=a=>[[Math.cos(a),-Math.sin(a),0],[Math.sin(a),Math.cos(a),0],[0,0,1]];
+function rotM(A,dx,dy,dz){A=mmul(rx(dy*.01),mmul(ry(dx*.01),A));if(dz)A=mmul(rz(-dz),A);const a=nrm(A[0]),b0=A[1],b=nrm(sub(b0,mul(a,dot(b0,a))));return[a,b,cross(a,b)]}
+function spin(dx,dy,t,dz){if(t!="R")M=rotM(M,dx,dy,dz);if(t!="L")M2=rotM(M2,dx,dy,dz)}
 const in3d=()=>mode=="mem"&&v3;
 function newGame(){G=build($('sh').value);net=makeNet();maze=makeMaze();sel=new Set();tries=0;showSol=false;solved=false;flash=null;
-$('so').textContent='Show solution';mode=$('md').value;lock=true;mir=false;zN=z3=1;panX=panY=0;M2=M.map(r=>r.slice());phase='build';perfect=false;wallSel=new Set();gs=ge=null;tool='w';v3=false;ui();draw()}
+$('so').textContent='Show solution';mode=$('md').value;lock=true;mir=false;zN=z3=1;panX=panY=0;aN=p3x=p3y=0;M2=M.map(r=>r.slice());phase='build';perfect=false;wallSel=new Set();gs=ge=null;tool='w';v3=false;ui();draw()}
 function status(m){$('msg').textContent=m||(solved?`Solved with ${sel.size+2} faces after ${tries} check${tries>1?'s':''} (shortest route: ${maze.sol.length}).`:`Selected: ${sel.size} · checks: ${tries}`)}
 function draw(){if(!net)return;if(in3d())return draw3d();
 const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1,W=r.width,H=r.height;
@@ -126,7 +127,7 @@ const cs=getComputedStyle(document.documentElement),C=n=>cs.getPropertyValue(n).
 let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
 net.pos.forEach(P=>Object.values(P).forEach(p=>{x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1])}));
 const m=26,s=Math.min((W-2*m)/(x1-x0),(H-2*m)/(y1-y0))*zN,ox=(W-(x1-x0)*s)/2-x0*s,oy=(H-(y1-y0)*s)/2-y0*s;
-const F=G.F;scr=F.map((f,i)=>f.v.map(v=>{const p=net.pos[i][v];return[ox+panX+p[0]*s,(H-(y1-y0)*s)/2+panY+(y1-p[1])*s]}));
+const F=G.F;scr=F.map((f,i)=>f.v.map(v=>{const p=net.pos[i][v];const ux=ox+p[0]*s-W/2,uy=(H-(y1-y0)*s)/2+(y1-p[1])*s-H/2,ca=Math.cos(aN),sa=Math.sin(aN);return[W/2+panX+ux*ca-uy*sa,H/2+panY+ux*sa+uy*ca]}));
 const items=[];
 F.forEach((f,i)=>{const P=scr[i],pi=sel.has(i);
 ctx.beginPath();P.forEach((p,j)=>j?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();
@@ -169,10 +170,10 @@ else{panel("you",0,W/2,H,"Your shape");panel("truth",W/2,W/2,H,mir?"Correct shap
 ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--thin');ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2,10);ctx.lineTo(W/2,H-10);ctx.stroke()}}
 function panel(kind,x0,W,H,title){
 const cs=getComputedStyle(document.documentElement),C=n=>cs.getPropertyValue(n).trim();
-const{V,F}=G,R=Math.max(...V.map(v=>Math.hypot(...v))),D=4*R,k=Math.min(W,H-30)*.34/R*z3,cx=x0+W/2,cyy=H/2+12;
+const{V,F}=G,R=Math.max(...V.map(v=>Math.hypot(...v))),D=4*R,k=Math.min(W,H-30)*.34/R*z3,cx=x0+W/2+p3x,cyy=H/2+12+p3y;
 const MM=kind=="truth"?M2:M,fl=kind=="truth"&&mir,pt=p=>fl?[-p[0],p[1],p[2]]:p,rot=p=>MM.map(r=>dot(r,pt(p)));
 const PV=V.map(v=>{const q=rot(v),f=D/(D-q[2]);return[cx+q[0]*k*f,cyy-q[1]*k*f]});
-if(title){ctx.fillStyle=C('--fg');ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(title,cx,8)}
+if(title){ctx.fillStyle=C('--fg');ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(title,x0+W/2,8)}
 const ek=new Set();
 F.forEach((f,i)=>{const n=rot(f.N),c=rot(f.c);if(dot(n,sub([0,0,D],c))<=0)return;
 const P=f.v.map(v=>PV[v]);s3.push({i,P});f.e.forEach(x=>ek.add(x));
@@ -202,20 +203,25 @@ const ptrs=new Map();let pinch=null;
 const ZMIN=.75,ZMAX=2,clampZ=z=>Math.max(ZMIN,Math.min(ZMAX,z));
 function clampPan(){const r=cv.getBoundingClientRect(),l=(zN-1)*Math.max(r.width,r.height)/2+40;panX=Math.max(-l,Math.min(l,panX));panY=Math.max(-l,Math.min(l,panY))}
 function zoomBy(f){if(in3d())z3=clampZ(z3*f);else{zN=clampZ(zN*f);clampPan()}draw()}
+function gest(){const[a,b]=[...ptrs.values()];return{d:Math.hypot(a.x-b.x,a.y-b.y),a:Math.atan2(b.y-a.y,b.x-a.x),mx:(a.x+b.x)/2,my:(a.y+b.y)/2}}
+function rollBy(da,t){if(in3d())spin(0,0,t,da);else aN+=da}
 cv.onpointerdown=e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});try{cv.setPointerCapture(e.pointerId)}catch(_){}
 if(ptrs.size==1){const r=cv.getBoundingClientRect();dn={x:e.clientX,y:e.clientY,m:false,t:phase=="done"&&!lock?(e.clientX-r.left>r.width/2?"R":"L"):"B"}}
-else{if(dn)dn.m=true;const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y)}}};
+else{if(dn)dn.m=true;pinch=gest();const r=cv.getBoundingClientRect();pinch.t=phase=="done"&&!lock?(pinch.mx-r.left>r.width/2?"R":"L"):"B"}};
 cv.onpointermove=e=>{const p=ptrs.get(e.pointerId);if(!p)return;p.x=e.clientX;p.y=e.clientY;
-if(ptrs.size>=2){const[a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y);
-if(pinch&&pinch.d>0)zoomBy(d/pinch.d);pinch={d};return}
+if(ptrs.size>=2){const g=gest(),q=pinch;if(q){if(q.d>0)zoomBy(g.d/q.d);let da=g.a-q.a;da=Math.atan2(Math.sin(da),Math.cos(da));const mx=g.mx-q.mx,my=g.my-q.my;
+if(in3d()){spin(0,0,q.t,da);const r=cv.getBoundingClientRect(),l=Math.max(r.width,r.height)*.6;p3x=Math.max(-l,Math.min(l,p3x+mx));p3y=Math.max(-l,Math.min(l,p3y+my))}
+else{aN+=da;panX+=mx;panY+=my;clampPan()}g.t=q.t}pinch=g;draw();return}
 if(!dn)return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;
 if(!dn.m&&Math.hypot(dx,dy)>6)dn.m=true;
+if(dn.m&&e.shiftKey&&e.pointerType=="mouse"){const r=cv.getBoundingClientRect(),cx=r.left+r.width/2,cy=r.top+r.height/2;let da=Math.atan2(e.clientY-cy,e.clientX-cx)-Math.atan2(dn.y-cy,dn.x-cx);da=Math.atan2(Math.sin(da),Math.cos(da));rollBy(da,dn.t);dn.x=e.clientX;dn.y=e.clientY;draw();return}
 if(dn.m){if(in3d())spin(dx,dy,dn.t);else{panX+=dx;panY+=dy;clampPan()}dn.x=e.clientX;dn.y=e.clientY;draw()}};
 cv.onpointerup=cv.onpointercancel=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;
 if(dn&&!dn.m&&ptrs.size==0&&e.type=="pointerup"){const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;in3d()?click3d(x,y):netClick(x,y)}
 if(ptrs.size==1&&dn){const q=[...ptrs.values()][0];dn.x=q.x;dn.y=q.y}
 if(ptrs.size==0)dn=null};
 cv.addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(-e.deltaY*.0015))},{passive:false});
+$('rl').onclick=()=>{rollBy(-.26,"B");draw()};$('rr').onclick=()=>{rollBy(.26,"B");draw()};
 $('zi').onclick=()=>zoomBy(1.25);$('zo').onclick=()=>zoomBy(.8);
 $('sb').onclick=()=>{phase="done";v3=true;ui();draw()};
 $('mr').onclick=()=>{mir=!mir;ui();draw()};
