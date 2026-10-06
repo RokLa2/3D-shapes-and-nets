@@ -21,11 +21,20 @@ select,button{font:inherit;padding:6px 10px;border-radius:8px;border:1px solid v
 #wrap{position:relative;flex:1;min-height:0}
 canvas{position:absolute;inset:0;width:100%;height:100%;touch-action:manipulation}
 #leg{padding:6px 12px 10px;font-size:13px;opacity:.85}
+#bar,#bar2{display:flex;flex-wrap:wrap;gap:8px;padding:8px 10px}
+#bar2{padding-bottom:10px}
+#bar2 button{flex:1 1 auto}
+select,button{min-height:44px;font-size:16px}
+#md,#sh{flex:1 1 auto;min-width:0}
+#msg{padding:2px 12px 6px;font-size:14px;text-align:center;min-height:1.4em}
+body{height:100dvh}
+#zb{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:6px}
+#zb button{width:44px;padding:0;font-size:24px;line-height:1;opacity:.92}
 </style></head><body>
-<div id="bar"><select id="md"><option value="path">Mode: Find the path</option><option value="mem">Mode: Replicate</option></select><select id="sh"></select><button id="nw">New maze</button><button id="ck">Check</button><button id="rs">Clear</button><button id="so">Show solution</button><button id="tw">Walls</button><button id="ts">Start face</button><button id="te">End face</button><button id="sb">Submit</button><button id="lk">Rotation: locked</button><button id="tg">Show 3D</button></div>
+<div id="bar"><select id="md"><option value="path">Mode: Find the path</option><option value="mem">Mode: Replicate</option></select><select id="sh"></select><button id="nw">New maze</button></div>
+<div id="wrap"><canvas id="cv"></canvas><div id="zb"><button id="zi">+</button><button id="zo">−</button></div></div>
 <div id="msg"></div>
-<div id="wrap"><canvas id="cv"></canvas></div>
-<div id="leg"><b>Goal:</b> select every face on a route from green <b>S</b> to orange <b>E</b>, then press Check. Thick dark lines are walls; thin lines are open. Each face is a face of a 3D solid, so you can only pass between faces that touch when the net is folded. Edges on the outside of the net are not hidden walls: they glue to other edges, and you must work out which.</div>
+<div id="bar2"><button id="ck">Check</button><button id="rs">Clear</button><button id="so">Show solution</button><button id="tg">Show 3D</button><button id="sb">Submit</button><button id="lk">Rotation: locked</button><button id="mr">Correct shape: folded out</button></div>
 <script>
 const $=id=>document.getElementById(id),cv=$('cv'),ctx=cv.getContext('2d');
 const sub=(a,b)=>a.map((x,i)=>x-b[i]),dot=(a,b)=>a.reduce((s,x,i)=>s+x*b[i],0),mul=(a,s)=>a.map(x=>x*s);
@@ -100,7 +109,7 @@ const sc=dist[e]+2*cuts+Math.random();
 if(!best||sc>best.sc)best={sc,open,adj,s,t:e,sol:sol.reverse()}}}}
 return best}
 let G,net,maze,sel,tries,showSol,solved,flash,scr=[];
-let mode="path",phase="net",wallSel=new Set(),gs=null,ge=null,tool="w",v3=false,perfect=false,resMsg="",M=null,M2=null,lock=true,dn=null,s3=[],e3=[];
+let mode="path",phase="net",wallSel=new Set(),gs=null,ge=null,tool="w",v3=false,perfect=false,resMsg="",M=null,M2=null,mir=false,zN=1,z3=1,panX=0,panY=0,lock=true,dn=null,s3=[],e3=[];
 const ry=a=>[[Math.cos(a),0,Math.sin(a)],[0,1,0],[-Math.sin(a),0,Math.cos(a)]],rx=a=>[[1,0,0],[0,Math.cos(a),-Math.sin(a)],[0,Math.sin(a),Math.cos(a)]];
 const mmul=(A,B)=>A.map(r=>[0,1,2].map(j=>r[0]*B[0][j]+r[1]*B[1][j]+r[2]*B[2][j]));
 M=mmul(rx(.5),ry(.6));M2=M.map(r=>r.slice());
@@ -108,7 +117,7 @@ function rotM(A,dx,dy){A=mmul(rx(dy*.01),mmul(ry(dx*.01),A));const a=nrm(A[0]),b
 function spin(dx,dy,t){if(t!="R")M=rotM(M,dx,dy);if(t!="L")M2=rotM(M2,dx,dy)}
 const in3d=()=>mode=="mem"&&v3;
 function newGame(){G=build($('sh').value);net=makeNet();maze=makeMaze();sel=new Set();tries=0;showSol=false;solved=false;flash=null;
-$('so').textContent='Show solution';mode=$('md').value;lock=true;M2=M.map(r=>r.slice());phase='build';perfect=false;wallSel=new Set();gs=ge=null;tool='w';v3=false;ui();draw()}
+$('so').textContent='Show solution';mode=$('md').value;lock=true;mir=false;zN=z3=1;panX=panY=0;M2=M.map(r=>r.slice());phase='build';perfect=false;wallSel=new Set();gs=ge=null;tool='w';v3=false;ui();draw()}
 function status(m){$('msg').textContent=m||(solved?`Solved with ${sel.size+2} faces after ${tries} check${tries>1?'s':''} (shortest route: ${maze.sol.length}).`:`Selected: ${sel.size} · checks: ${tries}`)}
 function draw(){if(!net)return;if(in3d())return draw3d();
 const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1,W=r.width,H=r.height;
@@ -116,8 +125,8 @@ cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0
 const cs=getComputedStyle(document.documentElement),C=n=>cs.getPropertyValue(n).trim();
 let x0=1e9,x1=-1e9,y0=1e9,y1=-1e9;
 net.pos.forEach(P=>Object.values(P).forEach(p=>{x0=Math.min(x0,p[0]);x1=Math.max(x1,p[0]);y0=Math.min(y0,p[1]);y1=Math.max(y1,p[1])}));
-const m=26,s=Math.min((W-2*m)/(x1-x0),(H-2*m)/(y1-y0)),ox=(W-(x1-x0)*s)/2-x0*s,oy=(H-(y1-y0)*s)/2-y0*s;
-const F=G.F;scr=F.map((f,i)=>f.v.map(v=>{const p=net.pos[i][v];return[ox+p[0]*s,(H-(y1-y0)*s)/2+(y1-p[1])*s]}));
+const m=26,s=Math.min((W-2*m)/(x1-x0),(H-2*m)/(y1-y0))*zN,ox=(W-(x1-x0)*s)/2-x0*s,oy=(H-(y1-y0)*s)/2-y0*s;
+const F=G.F;scr=F.map((f,i)=>f.v.map(v=>{const p=net.pos[i][v];return[ox+panX+p[0]*s,(H-(y1-y0)*s)/2+panY+(y1-p[1])*s]}));
 const items=[];
 F.forEach((f,i)=>{const P=scr[i],pi=sel.has(i);
 ctx.beginPath();P.forEach((p,j)=>j?ctx.lineTo(...p):ctx.moveTo(...p));ctx.closePath();
@@ -133,36 +142,35 @@ if(st==0){ctx.strokeStyle=C('--thin');ctx.lineWidth=2;ctx.stroke()}
 else{ctx.strokeStyle=C('--wall');ctx.lineWidth=6;ctx.stroke()}})}
 function inside(P,x,y){let c=false;for(let i=0,j=P.length-1;i<P.length;j=i++)
 if((P[i][1]>y)!=(P[j][1]>y)&&x<(P[j][0]-P[i][0])*(y-P[i][1])/(P[j][1]-P[i][1])+P[i][0])c=!c;return c}
-cv.onclick=e=>{if(mode!='path'||solved)return;const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;
+function netClick(x,y){if(mode!='path'||solved)return;
 const f=scr.findIndex(P=>inside(P,x,y));if(f<0||f==maze.s||f==maze.t)return;
-sel.has(f)?sel.delete(f):sel.add(f);status();draw()};
+sel.has(f)?sel.delete(f):sel.add(f);status();draw()}
 $('ck').onclick=()=>{if(solved)return;const S=new Set([...sel,maze.s,maze.t]),seen=new Set([maze.s]),q=[maze.s];let ok=true;
 while(q.length){const a=q.shift();maze.adj[a].forEach(([b])=>{if(S.has(b)&&!seen.has(b)){seen.add(b);q.push(b)}})}
 if(seen.size!=S.size)ok=false;
 S.forEach(f=>{const d=maze.adj[f].filter(([b])=>S.has(b)).length;if(d!=(f==maze.s||f==maze.t?1:2))ok=false});
-tries++;if(ok){solved=true;status()}else status('Not a valid route yet: it must be one unbroken chain of faces through open doors, with no extras. Checks: '+tries)};
+tries++;if(ok){solved=true;status()}else status('Not a valid route yet. Checks: '+tries)};
 
 function ui(){const m=mode=="mem",b=phase=="build";
 ['ck','rs','so'].forEach(i=>$(i).hidden=m);
-['tw','ts','te','sb'].forEach(i=>$(i).hidden=!(m&&b));$('tg').hidden=!m;$('lk').hidden=!(m&&!b&&v3);$('lk').textContent=lock?'Rotation: locked':'Rotation: separate';
+$('sb').hidden=!(m&&b);$('tg').hidden=!m;
+$('lk').hidden=$('mr').hidden=!(m&&!b&&v3);
 $('tg').textContent=v3?'Show net':'Show 3D';
-[['tw','w'],['ts','s'],['te','e']].forEach(([i,t])=>$(i).style.background=v3&&tool==t?'var(--path)':'');
-cv.style.touchAction=in3d()?'none':'manipulation';
-$('leg').innerHTML=!m?'<b>Goal:</b> select every face on a route from green <b>S</b> to orange <b>E</b>, then press Check. Thick dark lines are walls; thin lines are open. Each face is a face of a 3D solid, so you can only pass between faces that touch when the net is folded. Edges on the outside of the net are not hidden walls: they glue to other edges, and you must work out which.':
-'<b>Replicate mode:</b> fold the net away from you, so the side you see ends up on the outside. The net shows the walls (thick lines) and the S and E faces. Switch to the 3D solid at any time, drag to rotate it, and copy the maze onto it: mark the wall edges and the Start and End faces, then Submit. After Submit, your solid and the correct one are shown side by side. The Rotation button makes them turn together (each keeps its current position) or lets you spin each one on its own.';
+$('lk').textContent=lock?'Rotation: locked':'Rotation: separate';
+$('mr').textContent=mir?'Correct shape: folded in':'Correct shape: folded out';
+cv.style.touchAction='none';
 if(!m)status();
-else if(!b)status("Compare your shape (left) with the correct shape (right). Rotate them to check from every side.");
-else if(!v3)status("Study the net, then press Show 3D whenever you want to start marking the solid.");
-else status({w:`Walls tool: click the edges that are walls (${wallSel.size} marked). Drag to rotate.`,s:"Start tool: click the face that is the Start.",e:"End tool: click the face that is the End."}[tool])}
+else if(!b)status(v3?"Left: your shape · Right: correct shape":"Net of the correct shape");
+else status(v3?"Tap an edge: wall. Tap a face: start, end, blank.":"Study the net, then tap Show 3D.")}
 function draw3d(){const r=cv.getBoundingClientRect(),dpr=devicePixelRatio||1,W=r.width,H=r.height;
 cv.width=W*dpr;cv.height=H*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,W,H);s3=[];e3=[];
 if(phase=="build")panel("edit",0,W,H,"");
-else{panel("you",0,W/2,H,"Your shape");panel("truth",W/2,W/2,H,"Correct shape");
+else{panel("you",0,W/2,H,"Your shape");panel("truth",W/2,W/2,H,mir?"Correct shape (folded in)":"Correct shape (folded out)");
 ctx.strokeStyle=getComputedStyle(document.documentElement).getPropertyValue('--thin');ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(W/2,10);ctx.lineTo(W/2,H-10);ctx.stroke()}}
 function panel(kind,x0,W,H,title){
 const cs=getComputedStyle(document.documentElement),C=n=>cs.getPropertyValue(n).trim();
-const{V,F}=G,R=Math.max(...V.map(v=>Math.hypot(...v))),D=4*R,k=Math.min(W,H-30)*.34/R,cx=x0+W/2,cyy=H/2+12;
-const MM=kind=="truth"?M2:M,rot=p=>MM.map(r=>dot(r,p));
+const{V,F}=G,R=Math.max(...V.map(v=>Math.hypot(...v))),D=4*R,k=Math.min(W,H-30)*.34/R*z3,cx=x0+W/2,cyy=H/2+12;
+const MM=kind=="truth"?M2:M,fl=kind=="truth"&&mir,pt=p=>fl?[-p[0],p[1],p[2]]:p,rot=p=>MM.map(r=>dot(r,pt(p)));
 const PV=V.map(v=>{const q=rot(v),f=D/(D-q[2]);return[cx+q[0]*k*f,cyy-q[1]*k*f]});
 if(title){ctx.fillStyle=C('--fg');ctx.font='bold 16px system-ui';ctx.textAlign='center';ctx.textBaseline='top';ctx.fillText(title,cx,8)}
 const ek=new Set();
@@ -180,19 +188,37 @@ const T=!maze.open.has(key),g=wallSel.has(key);let st=0;
 st=kind=="truth"?(T?1:0):(g?1:0);
 ctx.beginPath();ctx.moveTo(...p);ctx.lineTo(...q);ctx.lineCap='round';
 ctx.strokeStyle=st==0?C('--thin'):st==1?C('--wall'):st==2?'#e5484d':'#f5a524';ctx.lineWidth=st?6:1.5;ctx.stroke()})}
-function click3d(x,y){if(phase!="build")return;
-if(tool=="w"){let best=null,bd=14;e3.forEach(({k,p,q})=>{const dx=q[0]-p[0],dy=q[1]-p[1],t=Math.max(0,Math.min(1,((x-p[0])*dx+(y-p[1])*dy)/(dx*dx+dy*dy))),d=Math.hypot(x-p[0]-t*dx,y-p[1]-t*dy);if(d<bd){bd=d;best=k}});
-if(best)wallSel.has(best)?wallSel.delete(best):wallSel.add(best)}
+function click3d(x,y){if(phase!="build")return;let note="";
+let best=null,bd=12;e3.forEach(({k,p,q})=>{const dx=q[0]-p[0],dy=q[1]-p[1],t=Math.max(0,Math.min(1,((x-p[0])*dx+(y-p[1])*dy)/(dx*dx+dy*dy))),d=Math.hypot(x-p[0]-t*dx,y-p[1]-t*dy);if(d<bd){bd=d;best=k}});
+if(best)wallSel.has(best)?wallSel.delete(best):wallSel.add(best);
 else{const h=s3.find(o=>inside(o.P,x,y));if(h){const f=h.i;
-if(tool=="s"){gs=gs===f?null:f;if(ge===f)ge=null}else{ge=ge===f?null:f;if(gs===f)gs=null}}}
-ui();draw()}
-cv.onpointerdown=e=>{dn={x:e.clientX,y:e.clientY,m:false,t:phase=="done"&&!lock?(e.clientX-cv.getBoundingClientRect().left>cv.getBoundingClientRect().width/2?"R":"L"):"B"};try{cv.setPointerCapture(e.pointerId)}catch(_){}};
-cv.onpointermove=e=>{if(!dn||!in3d())return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;
-if(Math.hypot(dx,dy)>4)dn.m=true;
-if(dn.m){spin(dx,dy,dn.t);dn.x=e.clientX;dn.y=e.clientY;draw()}};
-cv.onpointerup=e=>{if(dn&&!dn.m&&in3d()){const r=cv.getBoundingClientRect();click3d(e.clientX-r.left,e.clientY-r.top)}dn=null};
-[['tw','w'],['ts','s'],['te','e']].forEach(([i,t])=>$(i).onclick=()=>{tool=t;v3=true;ui();draw()});
+if(f===gs){gs=null;if(ge===null)ge=f}
+else if(f===ge)ge=null;
+else if(gs===null)gs=f;
+else if(ge===null)ge=f;
+else note="Start and End are placed. Tap one of them to remove it first."}}
+ui();if(note)status(note);draw()}
+const ptrs=new Map();let pinch=null;
+const ZMIN=.75,ZMAX=2,clampZ=z=>Math.max(ZMIN,Math.min(ZMAX,z));
+function clampPan(){const r=cv.getBoundingClientRect(),l=(zN-1)*Math.max(r.width,r.height)/2+40;panX=Math.max(-l,Math.min(l,panX));panY=Math.max(-l,Math.min(l,panY))}
+function zoomBy(f){if(in3d())z3=clampZ(z3*f);else{zN=clampZ(zN*f);clampPan()}draw()}
+cv.onpointerdown=e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});try{cv.setPointerCapture(e.pointerId)}catch(_){}
+if(ptrs.size==1){const r=cv.getBoundingClientRect();dn={x:e.clientX,y:e.clientY,m:false,t:phase=="done"&&!lock?(e.clientX-r.left>r.width/2?"R":"L"):"B"}}
+else{if(dn)dn.m=true;const[a,b]=[...ptrs.values()];pinch={d:Math.hypot(a.x-b.x,a.y-b.y)}}};
+cv.onpointermove=e=>{const p=ptrs.get(e.pointerId);if(!p)return;p.x=e.clientX;p.y=e.clientY;
+if(ptrs.size>=2){const[a,b]=[...ptrs.values()],d=Math.hypot(a.x-b.x,a.y-b.y);
+if(pinch&&pinch.d>0)zoomBy(d/pinch.d);pinch={d};return}
+if(!dn)return;const dx=e.clientX-dn.x,dy=e.clientY-dn.y;
+if(!dn.m&&Math.hypot(dx,dy)>6)dn.m=true;
+if(dn.m){if(in3d())spin(dx,dy,dn.t);else{panX+=dx;panY+=dy;clampPan()}dn.x=e.clientX;dn.y=e.clientY;draw()}};
+cv.onpointerup=cv.onpointercancel=e=>{ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;
+if(dn&&!dn.m&&ptrs.size==0&&e.type=="pointerup"){const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;in3d()?click3d(x,y):netClick(x,y)}
+if(ptrs.size==1&&dn){const q=[...ptrs.values()][0];dn.x=q.x;dn.y=q.y}
+if(ptrs.size==0)dn=null};
+cv.addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(-e.deltaY*.0015))},{passive:false});
+$('zi').onclick=()=>zoomBy(1.25);$('zo').onclick=()=>zoomBy(.8);
 $('sb').onclick=()=>{phase="done";v3=true;ui();draw()};
+$('mr').onclick=()=>{mir=!mir;ui();draw()};
 $('lk').onclick=()=>{lock=!lock;ui();draw()};
 $('tg').onclick=()=>{v3=!v3;ui();draw()};
 Object.keys(SH).forEach(n=>$('sh').add(new Option(n,n)));$('sh').value='Dodecahedron';
