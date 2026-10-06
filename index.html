@@ -28,11 +28,9 @@ select,button{min-height:44px;font-size:16px}
 #md,#sh{flex:1 1 auto;min-width:0}
 #msg{padding:2px 12px 6px;font-size:14px;text-align:center;min-height:1.4em}
 body{height:100dvh}
-#zb{position:absolute;top:8px;right:8px;display:flex;flex-direction:column;gap:6px}
-#zb button{width:44px;padding:0;font-size:24px;line-height:1;opacity:.92}
 </style></head><body>
 <div id="bar"><select id="md"><option value="path">Mode: Find the path</option><option value="mem">Mode: Replicate</option></select><select id="sh"></select><button id="nw">New maze</button></div>
-<div id="wrap"><canvas id="cv"></canvas><div id="zb"><button id="zi">+</button><button id="zo">−</button><button id="rl">⟲</button><button id="rr">⟳</button></div></div>
+<div id="wrap"><canvas id="cv"></canvas></div>
 <div id="msg"></div>
 <div id="bar2"><button id="ck">Check</button><button id="rs">Clear</button><button id="so">Show solution</button><button id="tg">Show 3D</button><button id="sb">Submit</button><button id="lk">Rotation: locked</button><button id="mr">Correct shape: folded out</button></div>
 <script>
@@ -218,8 +216,7 @@ if(dn&&!dn.m&&ptrs.size==0&&e.type=="pointerup"){const r=cv.getBoundingClientRec
 if(ptrs.size==1&&dn){const q=[...ptrs.values()][0];dn.x=q.x;dn.y=q.y}
 if(ptrs.size==0)dn=null};
 cv.addEventListener('wheel',e=>{e.preventDefault();zoomBy(Math.exp(-e.deltaY*.0015))},{passive:false});
-$('rl').onclick=()=>{rollBy(-.26,"B");draw()};$('rr').onclick=()=>{rollBy(.26,"B");draw()};
-$('zi').onclick=()=>zoomBy(1.25);$('zo').onclick=()=>zoomBy(.8);
+
 $('sb').onclick=()=>{phase="done";v3=true;ui();draw()};
 $('mr').onclick=()=>{mir=!mir;ui();draw()};
 $('lk').onclick=()=>{lock=!lock;ui();draw()};
